@@ -119,8 +119,9 @@ class TestBuildExif:
         meta = {"people": [{"name": "Alice"}, {"name": "Bob"}]}
         exif = build_exif(meta, {})
         author = exif["0th"][piexif.ImageIFD.XPAuthor]
-        assert b"Alice" in author
-        assert b"Bob" in author
+        # XPAuthor is stored as UTF-16-LE + null terminator
+        assert "Alice".encode("utf-16-le") in author
+        assert "Bob".encode("utf-16-le") in author
 
     def test_software_tag(self):
         meta = {}
