@@ -28,11 +28,20 @@ Converts images (JPG, PNG, WebP, AVIF, HEIC, JXL) to a modern output format
 \* JXL lossless for JPEG sources uses `cjxl --lossless_jpeg=1` to store the
 original JPEG bitstream verbatim (~20% smaller, perfectly reversible).
 
-**Base requirements:**
+**Python dependencies:**
 
 ```bash
-pip install Pillow piexif
+pip install -r requirements.txt
+# Or with optional format support:
+pip install -r requirements.txt pillow-avif-plugin pillow-heif pillow-jxl-plugin
 ```
+
+**Non-Python dependencies:**
+
+| Tool | Required by | Install |
+|------|------------|---------|
+| `cjxl` | JXL lossless mode (`jpg_to_webp.py --format jxl --lossless`) | `libjxl` package (e.g. `brew install jpeg-xl`, `apt install libjxl-tools`, `pacman -S libjxl`) |
+| `ffmpeg` | MP4 metadata embedding (`takeout_merge.py`) | `ffmpeg` package (e.g. `brew install ffmpeg`, `apt install ffmpeg`) |
 
 **Usage:**
 
@@ -73,15 +82,17 @@ XMP sidecars for all formats including video.
 - **Video** (MP4) — metadata embedded via ffmpeg (stream copy, no re-encode),
   with XMP sidecar fallback when ffmpeg is unavailable
 
-**Requirements:**
+**Python dependencies:**
 
 ```bash
-pip install Pillow piexif
-# Optional, for non-JPEG/PNG formats:
-pip install pillow-heif pillow-jxl-plugin pillow-avif-plugin
-# Optional, for MP4 metadata embedding:
-#   install ffmpeg (e.g. `brew install ffmpeg`, `apt install ffmpeg`)
+pip install -r requirements.txt
 ```
+
+**Non-Python dependencies:**
+
+- `ffmpeg` — needed for embedding metadata into MP4 container atoms.
+  Without it, MP4 files still get XMP sidecars.
+  Install: `brew install ffmpeg` / `apt install ffmpeg`
 
 **Usage:**
 
