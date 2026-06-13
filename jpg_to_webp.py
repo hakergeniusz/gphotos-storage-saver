@@ -53,7 +53,7 @@ from pathlib import Path
 
 try:
     import piexif
-    from PIL import Image
+    from PIL import Image, ImageOps
 except ImportError:
     print("Missing dependencies. Run:  pip install Pillow piexif")
     sys.exit(1)
@@ -194,15 +194,48 @@ def convert_one(args: tuple) -> tuple[str, str]:
         img = Image.open(src_path)
         img.load()
 
+        # ── Normalise orientation ─────────────────────────────────────────
+        # Pillow does NOT auto-apply EXIF orientation for all formats
+        # (notably JXL).  Use exif_transpose to physically rotate the
+        # pixels so they are stored upright, and strip the Orientation
+        # tag so viewers don't double-rotate.
+        img = ImageOps.exif_transpose(img)
+
         # ── Extract and sanitise EXIF ─────────────────────────────────────
         raw_exif = img.info.get("exif", b"")
         if raw_exif:
             try:
                 exif_dict = piexif.load(raw_exif)
                 exif_dict["Exif"].pop(piexif.ExifIFD.MakerNote, None)
+                # Coerce plain-int values to the types piexif.dump expects.
+                # Pillow's JXL decoder can surface EXIF tags as plain int
+                # (e.g. tag 41729 ExifVersion as int 1) which piexif.dump
+                # rejects.  Numeric IFD types need a tuple; Undefined needs
+                # bytes.
+                _numeric_types = {
+                    piexif.TYPES.Byte, piexif.TYPES.Short,
+                    piexif.TYPES.Long, piexif.TYPES.SLong,
+                    piexif.TYPES.Rational, piexif.TYPES.SRational,
+                }
+                for ifd_name in ("0th", "Exif", "GPS", "Interop"):
+                    tag_table = piexif.TAGS.get(ifd_name, {})
+                    d = exif_dict[ifd_name]
+                    for k in list(d):
+                        v = d[k]
+                        if isinstance(v, int) and not isinstance(v, bool):
+                            expected = tag_table.get(k, {}).get("type")
+                            if expected in _numeric_types:
+                                d[k] = (v,)
+                            elif expected == piexif.TYPES.Undefined:
+                                d[k] = v.to_bytes(
+                                    max(1, (v.bit_length() + 7) // 8),
+                                    "little",
+                                )
                 raw_exif = piexif.dump(exif_dict)
             except Exception:
-                pass
+                # piexif.dump can still fail for other reasons; fall back to
+                # the original raw EXIF bytes so metadata isn't lost.
+                raw_exif = img.info.get("exif", b"")
 
         # ── Mode normalisation ────────────────────────────────────────────
         if img.mode == "P":
@@ -227,6 +260,11 @@ def convert_one(args: tuple) -> tuple[str, str]:
 
         if raw_exif:
             save_kwargs["exif"] = raw_exif
+
+        # Preserve XMP metadata (present in some JXL/AVIF files)
+        raw_xmp = img.info.get("xmp")
+        if raw_xmp:
+            save_kwargs["xmp"] = raw_xmp
 
         if fmt == "webp":
             save_kwargs["lossless"] = lossless
